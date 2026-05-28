@@ -1,0 +1,35 @@
+# Secrets
+.env
+
+# Certificats SSL locaux
+nginx/certs/cert.pem
+nginx/certs/key.pem
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# Base locale
+instance/
+*.db
+*.sqlite
+*.sqlite3
+
+# Fichiers de travail (notes, cours)
+audit_corrections_todo_docker_flask_mode_manuel.md
+todoapp-deploiement-methodologie.html
+todo-app/
+
+# Système / IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Cache local / outils dev
+.claude/

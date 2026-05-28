@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Todo{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  {# ── Formulaire ── #}
+  <form class="todo-form" action="/todos" method="POST">
+    <div class="form-row">
+      <input type="text" name="title" placeholder="Nouvelle tâche..." required maxlength="200" autofocus>
+      <button type="submit">Ajouter</button>
+    </div>
+    <div class="form-sub">
+      <label for="due">Pour le</label>
+      <input type="date" name="due_date" id="due">
+    </div>
+  </form>
+
+  {# ── Barre filtre + compteur ── #}
+  {% set total = todos|length %}
+  {% set n_done = todos|selectattr('completed')|list|length %}
+
+  <div class="toolbar">
+    <div class="filters">
+      <button class="filter-btn active" data-filter="all">Tout</button>
+      <button class="filter-btn" data-filter="pending">À faire</button>
+      <button class="filter-btn" data-filter="done">Terminées</button>
+    </div>
+    <span class="count">
+      {% if total == 0 %}aucune tâche
+      {% else %}{{ total - n_done }} restante{{ 's' if (total - n_done) > 1 else '' }}
+      {% if n_done %} · <span class="c-done">{{ n_done }} faite{{ 's' if n_done > 1 else '' }}</span>{% endif %}
+      {% endif %}
+    </span>
+  </div>
+
+  {# ── Liste ── #}
+  <ul class="todo-list">
+  {% if todos %}
+    {% for todo in todos %}
+    {% set en_retard = todo.due_date and not todo.completed and todo.due_date < today %}
+    <li class="todo-item{% if todo.completed %} completed{% endif %}"
+        data-status="{{ 'done' if todo.completed else 'pending' }}">
+
+      <form action="/todos/{{ todo.id }}/toggle" method="POST" class="f-inline">
+        <button class="btn-check" title="Changer le statut">
+          <span class="check{% if todo.completed %} checked{% endif %}">{% if todo.completed %}✓{% endif %}</span>
+        </button>
+      </form>
+
+      <div class="todo-body">
+        <span class="todo-title">{{ todo.title }}</span>
+        <div class="meta">
+          {% if todo.due_date %}
+            <span class="badge-date{% if en_retard %} overdue{% endif %}">
+              {{ todo.due_date.strftime('%d %b %Y') }}{% if en_retard %} · en retard{% endif %}
+            </span>
+          {% endif %}
+          <span class="badge-add">ajouté le {{ todo.created_at.strftime('%d/%m') }}</span>
+        </div>
+      </div>
+
+      <form action="/todos/{{ todo.id }}/delete" method="POST" class="f-inline">
+        <button class="btn-del" title="Supprimer">✕</button>
+      </form>
+
+    </li>
+    {% endfor %}
+  {% else %}
+    <li class="empty">Rien pour l'instant.</li>
+  {% endif %}
+  </ul>
+
+  {# ── Effacer terminées ── #}
+  {% if n_done > 0 %}
+  <div class="clear-zone">
+    <form action="/todos/clear-done" method="POST">
+      <button class="btn-clear">Effacer les {{ n_done }} terminée{{ 's' if n_done > 1 else '' }}</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {# ── Calendrier escamotable ── #}
+  <div class="cal-toggle-zone">
+    <button class="btn-cal-toggle" id="toggleCal">
+      ↓ &nbsp;Calendrier — {{ month_name }} {{ year }}
+    </button>
+  </div>
+
+  <div class="cal-section" id="calSection">
+
+    <div class="cal-nav">
+      <a href="/?year={{ prev_year }}&month={{ prev_month }}" class="cal-arrow">←</a>
+      <span class="cal-title">{{ month_name }} {{ year }}</span>
+      <a href="/?year={{ next_year }}&month={{ next_month }}" class="cal-arrow">→</a>
+    </div>
+
+    <div class="cal-grid">
+      {% for j in ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'] %}
+        <div class="cal-head">{{ j }}</div>
+      {% endfor %}
+
+      {% for semaine in semaines %}
+        {% for jour in semaine %}
+          {% if jour == 0 %}
+            <div class="cal-cell vide"></div>
+          {% else %}
+            {% set auj = (jour == today.day and month == today.month and year == today.year) %}
+            <div class="cal-cell{% if auj %} auj{% endif %}">
+              <span class="num-j">{{ jour }}</span>
+              {% if jour in par_jour %}
+              <div class="chips">
+                {% for t in par_jour[jour] %}
+                <span class="chip{% if t.completed %} chip-done{% endif %}">
+                  {{ t.title[:20] }}{% if t.title|length > 20 %}…{% endif %}
+                </span>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+    </div>
+
+    <div class="cal-add">
+      <p class="cal-add-label">Épingler une tâche</p>
+      <form class="todo-form" action="/todos" method="POST">
+        <div class="form-row">
+          <input type="text" name="title" placeholder="Titre..." required maxlength="200">
+          <button type="submit">Ajouter</button>
+        </div>
+        <div class="form-sub">
+          <label for="due2">Pour le</label>
+          <input type="date" name="due_date" id="due2">
+        </div>
+      </form>
+    </div>
+
+  </div>{# /cal-section #}
+
+</div>
+{% endblock %}

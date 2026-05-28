@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      POSTGRES_DB: todo_db
+      POSTGRES_USER: todo_user
+      POSTGRES_PASSWORD: ci_placeholder
+      SECRET_KEY: ci_placeholder_key
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Vérifier la syntaxe Python
+        run: |
+          python3 -m py_compile app/__init__.py
+          python3 -m py_compile app/models.py
+          python3 -m py_compile app/routes.py
+          python3 -m py_compile run.py
+
+      - name: Valider docker-compose.yml
+        run: docker compose config --quiet
+
+      - name: Builder l'image Flask
+        run: docker compose build flask_app
