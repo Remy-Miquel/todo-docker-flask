@@ -330,6 +330,16 @@ Les droits sont au niveau table, pas au niveau ligne. Un user mal filtré dans u
 
 ---
 
+## Patch — CVE-2026-42945 (Nginx)
+
+CVE-2026-42945, alias "Nginx Rift" : heap buffer overflow dans le module `ngx_http_rewrite_module`, déclenché par les directives `rewrite`, `if` ou `set` avec des expressions non nommées (`$1`, `$2`). Score CVSS 9.2, exploitation active signalée dès le 18 mai 2026. Versions affectées : 0.6.27 à 1.30.0.
+
+Notre config n'utilise pas ces directives — pas de `rewrite`, pas de captures non nommées. L'exploitation directe était peu probable dans ce setup. Ça ne change rien à la décision : la faille est publique, sévère et activement exploitée. Rester sur 1.25 n'aurait aucun sens.
+
+Mise à jour `nginx:1.25-alpine` → `nginx:1.31-alpine` dans le compose. Aucun changement sur la config ni sur les autres services — le conteneur nginx est sans état, un `docker compose up -d` après `git pull` suffit à déployer le patch.
+
+---
+
 ## Conclusion
 
 L'exercice demandait de déployer une app Flask avec Docker. C'est fait depuis la V1.
