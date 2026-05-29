@@ -294,6 +294,42 @@ Test : 7 POST rapides avec un token CSRF valide → 1 à 5 retournent 200, 6 et 
 
 ---
 
+## V3 — Séparation des droits PostgreSQL
+
+### Le problème
+
+En V1 et V2, Flask se connecte à la base avec le `POSTGRES_USER` de l'image Docker officielle. Ce user est superuser — il peut créer, modifier, supprimer des tables, lire n'importe quoi. L'app n'a jamais eu besoin de ces droits, mais ils étaient là.
+
+Le vecteur concret : une faille ORM qui laisse passer une commande DDL avec le superuser, c'est `DROP TABLE` exécuté. Avec un user limité aux lectures/écritures sur les deux tables, la même commande est refusée.
+
+L'autre repo du portfolio documente justement ça sur PostgreSQL. Ne pas l'appliquer ici c'est un écart difficile à justifier.
+
+---
+
+### Ce qui change
+
+Flask se connecte maintenant avec un `APP_DB_USER` dédié, créé au premier démarrage de la base. Droits : `SELECT`, `INSERT`, `UPDATE`, `DELETE` sur `users` et `todos`, plus `USAGE` sur les séquences. Pas de `CREATE`, `DROP`, `ALTER`.
+
+Le superuser ne sert plus qu'à l'init du schéma — une seule fois, au premier lancement du conteneur.
+
+---
+
+### db.create_all()
+
+Avant, Flask créait les tables lui-même via `db.create_all()` au démarrage. Pratique, mais ça demande les droits DDL qu'on vient d'enlever.
+
+Le schéma est maintenant dans `db/init.sh`. L'image PostgreSQL officielle exécute automatiquement tout ce qui se trouve dans `/docker-entrypoint-initdb.d/` au premier lancement — c'est le mécanisme prévu pour ça, pas un contournement.
+
+`db.create_all()` reste actif uniquement si l'app tourne sur SQLite (mode dev sans Docker). En production, Flask ne touche plus au DDL.
+
+---
+
+### Ce que ça ne règle pas
+
+Les droits sont au niveau table, pas au niveau ligne. Un user mal filtré dans une route pourrait techniquement lire des données qui ne lui appartiennent pas. La protection reste dans le code : `filter_by(user_id=current_user.id)` sur toutes les requêtes todo.
+
+---
+
 ## Conclusion
 
 L'exercice demandait de déployer une app Flask avec Docker. C'est fait depuis la V1.

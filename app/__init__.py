@@ -43,6 +43,7 @@ def create_app():
     app.register_blueprint(auth)
 
     with app.app_context():
-        db.create_all()
+        if 'sqlite' in app.config['SQLALCHEMY_DATABASE_URI']:
+            db.create_all()
 
     return app
