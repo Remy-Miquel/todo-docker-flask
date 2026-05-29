@@ -1,5 +1,7 @@
 # 🐳 Déploiement d'une Todo App avec Docker
 
+![CI](https://github.com/Remy-Miquel/todo-docker-flask/actions/workflows/ci.yml/badge.svg)
+
 Ce projet montre comment déployer une application Flask en production à l'aide de Docker.
 L'objectif est de passer d'un simple `python run.py` à une vraie infrastructure sécurisée,
 accessible via HTTPS, et déployable n'importe où.
@@ -36,16 +38,20 @@ Navigateur
 
 ```
 .
+├── .github/
+│   └── workflows/
+│       └── ci.yml           # Pipeline CI — build et validation automatiques
 ├── app/
 │   ├── __init__.py          # Crée l'application Flask et connecte la BDD
 │   ├── models.py            # Définit la table "todos" en base de données
-│   ├── routes.py            # Les routes : afficher, créer, cocher, supprimer
+│   ├── routes.py            # Les routes : CRUD, calendrier, health check
 │   ├── static/
 │   │   ├── css/style.css    # Style de l'interface
-│   │   └── js/app.js        # JavaScript minimal
+│   │   └── js/app.js        # Filtre et toggle calendrier
 │   └── templates/
-│       ├── base.html        # Squelette HTML commun à toutes les pages
-│       ├── index.html       # Page principale (liste des tâches)
+│       ├── base.html        # Squelette HTML commun
+│       ├── index.html       # Liste, filtres, calendrier mensuel
+│       ├── calendar.html    # Vue calendrier dédiée
 │       └── error.html       # Page d'erreur (404, 400...)
 ├── nginx/
 │   ├── nginx.conf           # Configuration du reverse proxy
@@ -55,6 +61,8 @@ Navigateur
 │       └── generate-ssl.sh  # Script pour générer les certificats
 ├── docker-compose.yml       # Orchestre les 3 services (Flask, Nginx, PostgreSQL)
 ├── Dockerfile               # Recette pour construire l'image Flask
+├── .env.example             # Variables d'environnement requises (sans les vraies valeurs)
+├── .gitignore               # Exclut .env, clés SSL, caches Python
 ├── requirements.txt         # Dépendances Python
 └── run.py                   # Point d'entrée de l'application
 ```
@@ -230,14 +238,19 @@ services:
   db:
     image: postgres:15
     environment:
-      POSTGRES_DB: todo_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - app_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   # Application Flask (via Gunicorn)
   flask_app:
@@ -245,12 +258,14 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      - FLASK_APP=run.py
-      - FLASK_ENV=development
-      - SECRET_KEY=dev_key_todo_app_2025
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/todo_db
+      FLASK_APP: run.py
+      FLASK_ENV: production
+      FLASK_DEBUG: "0"
+      SECRET_KEY: ${SECRET_KEY}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     networks:
       - app_network
     restart: unless-stopped
@@ -359,7 +374,7 @@ docker compose down -v
 |---|---|
 | Les 3 services tournent | `docker compose ps` |
 | L'app répond | `curl -k https://localhost` |
-| La BDD est accessible | `docker compose exec db psql -U postgres -d todo_db -c "\dt"` |
+| La BDD est accessible | `docker compose exec db psql -U $POSTGRES_USER -d $POSTGRES_DB -c "\dt"` |
 
 ---
 
