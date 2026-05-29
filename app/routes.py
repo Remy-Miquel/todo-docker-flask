@@ -107,3 +107,9 @@ def not_found(e):
 @main.app_errorhandler(400)
 def bad_request(e):
     return render_template('error.html', error="Requête invalide", code=400), 400
+
+@main.app_errorhandler(429)
+def too_many_requests(e):
+    return render_template('error.html',
+        error="Trop de tentatives de connexion. Attendez une minute avant de réessayer.",
+        code=429), 429

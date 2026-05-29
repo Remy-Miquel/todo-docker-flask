@@ -1,12 +1,20 @@
 import os
-from flask import Flask
+from flask import Flask, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_wtf.csrf import CSRFProtect
+from flask_limiter import Limiter
 
 db = SQLAlchemy()
 login_manager = LoginManager()
 csrf = CSRFProtect()
+
+
+def get_real_ip():
+    return request.headers.get('X-Real-IP') or request.remote_addr
+
+
+limiter = Limiter(key_func=get_real_ip, storage_uri="memory://", default_limits=[])
 
 
 def create_app():
@@ -22,6 +30,7 @@ def create_app():
 
     db.init_app(app)
     csrf.init_app(app)
+    limiter.init_app(app)
 
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
