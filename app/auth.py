@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_user, logout_user, login_required, current_user
 from app import db, limiter
 from app.models import User
+from urllib.parse import urlparse
 
 auth = Blueprint('auth', __name__)
 
@@ -19,6 +20,8 @@ def login():
         if user and user.check_password(password):
             login_user(user, remember=True)
             next_page = request.args.get('next')
+            if next_page and urlparse(next_page).netloc != '':
+                next_page = None
             return redirect(next_page or url_for('main.index'))
         flash('Email ou mot de passe incorrect.', 'error')
 

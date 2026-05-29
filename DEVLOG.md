@@ -290,7 +290,7 @@ Test : 7 POST rapides avec un token CSRF valide → 1 à 5 retournent 200, 6 et 
 
 - **HTTPS non forcé sur port 80** : modifié pour ngrok, un accès HTTP direct ne redirige plus vers HTTPS. En prod ce serait à corriger.
 - **Validation d'email côté serveur** : le format est vérifié côté HTML (`type="email"`) mais un curl peut envoyer n'importe quoi.
-- **Open redirect sur `?next=`** : après login, on redirige vers `next_page` sans vérifier que c'est une URL locale. Un lien forgé `/login?next=https://evil.com` redirige vers l'extérieur après connexion. À corriger avec `urlparse(next_page).netloc == ''`.
+- **Open redirect sur `?next=`** : corrigé. `urlparse(next_page).netloc != ''` détecte les URLs absolues vers un domaine externe et les ignore — seules les URLs relatives locales passent.
 
 ---
 
