@@ -238,4 +238,4 @@ docker compose down -v
 - **HTTPS local** : certificat auto-signé pour le développement
 - **Accès distant** : ngrok comme alternative simple à un déploiement cloud
 - **Authentification** : sessions Flask-Login, mots de passe hashés, isolation des données par utilisateur
-- **Sécurité** : headers HTTP, routes protégées, requêtes préparées (SQLAlchemy), échappement Jinja2
+- **Sécurité** : headers HTTP, CSRF (Flask-WTF), rate limiting (Flask-Limiter), requêtes préparées, échappement Jinja2 — testés en conditions réelles via ngrok

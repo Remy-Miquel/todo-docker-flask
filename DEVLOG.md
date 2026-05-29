@@ -2,6 +2,8 @@
 
 Notes de construction du projet. Pas un tutoriel, plutôt un retour sur ce qui s'est passé vraiment — dans l'ordre, avec les erreurs.
 
+L'exercice de base demandait de déployer une app avec Docker. On a fait ça, puis on a continué parce que chaque étape posait naturellement la suivante. Au final le projet couvre l'infrastructure, l'authentification, l'accès distant et la sécurité. C'est plus que demandé, mais rien n'a été ajouté pour faire du volume — chaque décision avait une raison concrète.
+
 ---
 
 ## V1 — Infrastructure de base
@@ -281,3 +283,20 @@ Test live : 7 POST rapides avec un token CSRF valide → tentatives 1 à 5 retou
 
 - **HTTPS non forcé sur port 80** : modifié pour ngrok, un accès HTTP direct ne redirige plus vers HTTPS. En prod ce serait à corriger.
 - **Pas de validation d'email côté serveur** : on vérifie le format côté HTML (`type="email"`) mais un curl peut envoyer n'importe quoi.
+
+---
+
+## Conclusion — où on en est et pourquoi on s'arrête là
+
+L'exercice demandait de déployer une app Flask avec Docker. C'est fait depuis la V1.
+
+Ce qui a été ajouté ensuite n'était pas du remplissage. Chaque décision venait d'un besoin réel :
+
+- **L'auth** est venue parce qu'une app sans utilisateurs c'est une app sans données. Et une app avec des données partagées entre tout le monde ça n'a pas de sens en démo.
+- **ngrok** est venu parce qu'une app qu'on ne peut montrer qu'en local c'est limité. L'objectif était de montrer quelque chose qui tourne vraiment.
+- **Le CSRF** est venu parce qu'une fois l'app en ligne, on a testé — et la faille était là, concrète, reproductible. On ne pouvait pas la laisser ouverte en sachant qu'elle existait.
+- **Le rate limiting** est venu parce qu'après avoir corrigé le CSRF, la question suivante était évidente : est-ce qu'on peut brute-forcer le login ? On a regardé, on pouvait. Donc on a corrigé.
+
+Ce qu'on ne fait pas : Redis pour le rate limiting en multi-workers, Flask-Migrate pour les migrations de schéma, validation d'email côté serveur, HTTPS forcé sur le port 80. Ces points existent, ils sont documentés, mais les ajouter ne changerait pas la démonstration — ce serait de l'optimisation sans objectif clair.
+
+Le projet dans son état actuel montre quelque chose de complet : une infrastructure Docker fonctionnelle, des utilisateurs, un accès distant, et une vraie séance de tests de sécurité avec corrections à la clé. C'est suffisant, et c'est honnête.
