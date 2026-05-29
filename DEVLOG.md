@@ -2,7 +2,7 @@
 
 Notes de construction du projet. Pas un tutoriel, plutôt un retour sur ce qui s'est passé vraiment — dans l'ordre, avec les erreurs.
 
-L'exercice de base demandait de déployer une app avec Docker. On a fait ça, puis on a continué parce que chaque étape posait naturellement la suivante. Au final le projet couvre l'infrastructure, l'authentification, l'accès distant et la sécurité. C'est plus que demandé, mais rien n'a été ajouté pour faire du volume — chaque décision avait une raison concrète.
+L'exercice de base demandait de déployer une app avec Docker. On a fait ça, puis on a continué parce que chaque étape posait naturellement la suivante. Au final le projet couvre l'infrastructure, l'authentification, l'accès distant et la sécurité.
 
 ---
 
@@ -40,9 +40,9 @@ Même logique pour `.env.example` : documenter les variables nécessaires sans m
 
 **Dockerfile**
 
-Rien de compliqué. Une image `python:3.11-slim`, les dépendances système pour compiler le connecteur PostgreSQL, puis les dépendances Python, puis le code.
+Une image `python:3.11-slim`, les dépendances système pour le connecteur PostgreSQL, puis les dépendances Python, puis le code.
 
-L'ordre COPY matters : on copie `requirements.txt` avant le code pour que Docker puisse mettre en cache la couche des dépendances. Si on modifie uniquement le code Python, le `pip install` ne retourne pas au build suivant.
+L'ordre COPY matters : on copie `requirements.txt` avant le code pour que Docker mette en cache la couche des dépendances. Si on modifie uniquement le code Python, le `pip install` ne retourne pas au build suivant.
 
 **docker-compose.yml**
 
@@ -77,7 +77,7 @@ fatal error: stdlib.h: No such file or directory
 compilation terminated.
 ```
 
-`psycopg2` se compile depuis les sources C. L'image slim n'a pas tous les headers nécessaires même avec `gcc` et `libpq-dev` installés. Solution : `psycopg2-binary`, version pré-compilée. Standard pour les environnements Docker, aucune différence fonctionnelle pour ce projet.
+`psycopg2` se compile depuis les sources C. L'image slim n'a pas tous les headers nécessaires même avec `gcc` et `libpq-dev` installés. Solution : `psycopg2-binary`, version pré-compilée, qui embarque les bibliothèques au lieu de les compiler à l'installation. Aucune différence fonctionnelle, c'est l'usage habituel dans un conteneur.
 
 **Race condition db/flask**
 
@@ -147,23 +147,21 @@ Trois étapes :
 
 Les variables d'environnement dans le workflow sont des placeholders — le pipeline n'a pas besoin d'une vraie base de données pour valider la configuration et builder l'image.
 
+Premier run : vert.
+
 **Pourquoi on s'arrête au CI et pas au CD**
 
-Le CD (Continuous Deployment) c'est l'étape d'après : déployer automatiquement sur un serveur à chaque push qui passe le CI. C'est la suite logique, et dans un vrai projet c'est ce qu'on ferait.
+Le CD c'est déployer automatiquement sur un serveur à chaque push qui passe le CI. C'est la suite logique, et dans un vrai projet c'est ce qu'on ferait.
 
-Ici on ne l'a pas implémenté, pour une raison simple : le CD a besoin d'une cible stable. Notre setup c'est une machine locale avec ngrok — ngrok redémarre avec une URL différente à chaque fois, ce n'est pas un serveur. GitHub Actions ne saurait pas où envoyer le déploiement.
+Ici le problème c'est la cible : notre setup c'est une machine locale avec ngrok. ngrok change d'URL à chaque redémarrage, ce n'est pas un serveur. GitHub Actions ne saurait pas où envoyer le déploiement.
 
 Ce que ça ressemblerait avec une vraie cible :
 
-- **Docker Hub ou GHCR** : le CI build l'image et la pousse sur un registry public. L'image est versionnée, disponible, prête à être tirée par n'importe quel serveur. C'est un CD partiel — le serveur doit encore être géré manuellement.
+- **Docker Hub ou GHCR** : le CI build l'image et la pousse sur un registry public. L'image est versionnée, disponible, prête à être tirée par n'importe quel serveur. CD partiel — le serveur reste géré manuellement.
+- **Railway ou Render** : intégration GitHub directe, chaque push sur `main` déclenche un redéploiement automatique. URL stable, HTTPS gratuit. CD complet pour un projet de cette taille.
+- **VPS avec SSH** : GitHub Actions se connecte via SSH, fait un `git pull` et un `docker compose up --build`. Plus de contrôle, plus de configuration.
 
-- **Railway ou Render** : plateformes cloud avec intégration GitHub directe. On connecte le repo, on configure les variables d'environnement en ligne, et chaque push sur `main` déclenche un redéploiement automatique. URL stable, HTTPS gratuit, logs. C'est le CD complet pour un projet de cette taille.
-
-- **VPS avec SSH** : GitHub Actions se connecte au serveur via SSH, fait un `git pull` et un `docker compose up --build`. Plus de contrôle, plus de travail de configuration.
-
-On a fait le choix de ne pas aller jusque-là. Le projet avait déjà largement dépassé le périmètre initial. Documenter ce que serait le CD et pourquoi on ne l'implémente pas ici, c'est aussi une décision technique — pas un oubli.
-
-Premier run : vert.
+On s'est arrêté là. Le projet avait déjà dépassé le périmètre initial, et documenter ce que serait le CD sans l'implémenter c'est aussi une décision — pas un oubli.
 
 ---
 
@@ -171,30 +169,27 @@ Premier run : vert.
 
 ### Contexte
 
-Deux objectifs pour cette version :
+L'app tournait, mais tout le monde partageait les mêmes données et elle n'était visible qu'en local. Pour la démo, les deux manques évidents c'était des comptes utilisateurs et un accès depuis l'extérieur.
 
-1. **Ajouter un vrai système d'utilisateurs** — chaque personne a son propre compte et ne voit que ses tâches.
-2. **Rendre l'app accessible à distance** — via ngrok, sans déployer sur un vrai serveur. L'objectif c'est la démo, pas la prod.
-
-C'est aussi le moment où l'app devient "vraiment en ligne". Ça change la donne côté sécurité — les tests XSS et SQLi de la V1 c'était en local. Là, n'importe qui sur Internet peut envoyer des requêtes.
+C'est aussi le moment où l'app devient vraiment accessible depuis internet. Ça change la donne côté sécurité — les tests XSS et SQLi de la V1 c'était en local. Là, n'importe qui peut envoyer des requêtes.
 
 ---
 
 ### Authentification — choix techniques
 
-**Flask-Login** pour gérer les sessions. La librairie s'occupe de tout : stocker l'utilisateur en session, vérifier qu'il est connecté, rediriger vers `/login` si ce n'est pas le cas. Le décorateur `@login_required` sur chaque route todo évite de réécrire ce contrôle partout.
+Pour les sessions, on a utilisé Flask-Login. Il gère tout le cycle : stocker l'utilisateur connecté, vérifier à chaque requête qu'il l'est encore, rediriger vers `/login` sinon. Le décorateur `@login_required` sur chaque route todo évite de réécrire ce contrôle partout.
 
-**Werkzeug** pour les mots de passe. Werkzeug est déjà dans les dépendances de Flask, donc pas de nouvelle dépendance. `generate_password_hash` utilise pbkdf2:sha256 avec un sel aléatoire — les mots de passe ne sont jamais stockés en clair en base.
+Pour les mots de passe, Werkzeug était déjà dans les dépendances de Flask. `generate_password_hash` utilise pbkdf2:sha256 avec un sel aléatoire — rien n'est stocké en clair en base.
 
-**Deux tables** : `users` (id, username, email, password_hash) et `todos` avec une clé étrangère `user_id`. Chaque requête todo est filtrée par `current_user.id`. Un utilisateur ne peut pas lire, modifier ou supprimer les tâches d'un autre, même en forgeant un ID dans l'URL — les routes vérifient avec `filter_by(id=todo_id, user_id=current_user.id)`.
+Le schéma : deux tables, `users` et `todos`, avec une clé étrangère `user_id`. Chaque requête todo est filtrée par `current_user.id`. Un utilisateur ne peut pas lire, modifier ou supprimer les tâches d'un autre, même en forgeant un ID dans l'URL — les routes vérifient avec `filter_by(id=todo_id, user_id=current_user.id)`.
 
-**Choix d'architecture** : les routes d'auth dans un blueprint séparé (`app/auth.py`). Ça garde `routes.py` centré sur la logique todo, et ça aurait du sens si le projet grandissait.
+Les routes d'auth sont dans un blueprint séparé (`app/auth.py`) pour garder `routes.py` centré sur la logique todo.
 
 ---
 
 ### DB reset — décision délibérée
 
-L'ajout de `user_id NOT NULL` sur la table `todos` existante implique une migration. Pour un projet de test/démo, le choix le plus simple c'est de repartir d'une base vierge :
+L'ajout de `user_id NOT NULL` sur la table `todos` existante implique une migration. Pour un projet de test/démo, le plus direct c'est de repartir d'une base vierge :
 
 ```bash
 docker compose down -v   # supprime le volume postgres
@@ -207,11 +202,11 @@ En production on aurait utilisé Flask-Migrate (Alembic). Ici c'est inutile — 
 
 ### ngrok — pourquoi et comment
 
-L'alternative à ngrok c'est un vrai déploiement cloud (VPS, Railway, Render...). Pour une démo rapide, ngrok est suffisant et ça évite de gérer un serveur distant, un nom de domaine, des certificats Let's Encrypt.
+L'alternative c'est un vrai déploiement cloud (VPS, Railway, Render...). Pour une démo, ngrok évite de gérer un serveur distant, un nom de domaine, des certificats Let's Encrypt.
 
-**Intégration dans Docker Compose** : ngrok tourne dans un 4ème conteneur, dans le même réseau Docker que nginx. Il tunnele vers `nginx:80` (HTTP interne). ngrok fournit son propre HTTPS public — il n'a pas besoin de gérer nos certificats auto-signés.
+ngrok tourne dans un 4ème conteneur dans le même réseau Docker que nginx. Il tunnele vers `nginx:80` et fournit son propre HTTPS public — pas besoin de nos certificats auto-signés.
 
-**Pourquoi le port 80 sert directement maintenant** : en V1, nginx sur le port 80 redirigait vers HTTPS (301). Si ngrok tunnelait vers ce port, il récupérait une redirection vers `https://localhost` — inaccessible depuis l'extérieur. Donc nginx sert maintenant directement sur le port 80 (HTTP, sans redirect). Le port 443 reste disponible pour l'accès local direct avec HTTPS.
+En V1, nginx sur le port 80 redirigait vers HTTPS (301). Si ngrok tunnelait vers ce port, il récupérait une redirection vers `https://localhost` — inaccessible depuis l'extérieur. Nginx sert donc maintenant directement sur le port 80. Le port 443 reste disponible pour l'accès local direct.
 
 Pour trouver l'URL publique après démarrage :
 
@@ -242,7 +237,7 @@ Retour : page de login avec "Email ou mot de passe incorrect." SQLAlchemy transf
 
 ### CSRF — faille confirmée, puis corrigée
 
-C'est là que ça s'est passé. On a créé un fichier HTML autonome (rien à voir avec l'app) avec un formulaire qui postait vers `/todos` :
+On a créé un fichier HTML autonome avec un formulaire qui postait vers `/todos` :
 
 ```html
 <form id="csrf" action="https://<url-ngrok>/todos" method="POST">
@@ -251,68 +246,58 @@ C'est là que ça s'est passé. On a créé un fichier HTML autonome (rien à vo
 <script>document.getElementById('csrf').submit();</script>
 ```
 
-On ouvre ce fichier dans le navigateur pendant qu'on est connecté à l'app. Le formulaire s'envoie automatiquement. Résultat : la tâche "Tâche injectée par CSRF" apparaît dans la liste. Le navigateur a envoyé le cookie de session avec la requête parce que le domaine correspondait — et l'app ne vérifiait pas d'où venait la requête.
+On ouvre ce fichier dans le navigateur pendant qu'on est connecté à l'app. Le formulaire s'envoie. Résultat : la tâche "Tâche injectée par CSRF" apparaît dans la liste. Le navigateur a envoyé le cookie de session parce que `SameSite=Lax` ne bloque pas les soumissions de formulaire HTML classiques — uniquement les requêtes `fetch` et XHR cross-site.
 
 C'est une vraie vulnérabilité. Quelqu'un qui sait que tu utilises l'app pourrait t'envoyer un lien piégé, tu cliques, une action se fait à ton nom sans que tu t'en rendes compte.
 
-**Correction — Flask-WTF**
-
-Ajout de `Flask-WTF==1.2.1` dans les dépendances. `CSRFProtect(app)` dans `__init__.py`. Un token HMAC généré côté serveur, injecté dans chaque formulaire :
+**Flask-WTF** corrige ça. `CSRFProtect(app)` dans `__init__.py`, et un token HMAC dans chaque formulaire :
 
 ```html
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 ```
 
-Flask-WTF vérifie ce token à chaque POST. S'il est absent ou invalide → 400 immédiat. Le token est signé avec la `SECRET_KEY` et expire après 1h. Un site tiers ne peut pas le connaître, donc ne peut pas forger une requête valide.
+Flask-WTF vérifie ce token à chaque POST. Absent ou invalide → 400. Le token est signé avec la `SECRET_KEY` et expire après 1h. Un site tiers ne peut pas le connaître.
 
-Test après correction : même fichier HTML, même tentative → **400 Bad Request**. La faille est fermée.
+Test après correction : même fichier, même tentative → 400. La faille est fermée.
 
 ### Cookies — ce qu'on a vu dans DevTools
 
 Les cookies sont visibles dans DevTools → Application → Cookies, c'est normal. Ce qui compte c'est les flags :
 
-- `HttpOnly` : actif → JavaScript ne peut pas lire le cookie (protection XSS sur les sessions)
-- `Secure` : absent → le cookie voyage en HTTP aussi (normal pour notre config, ngrok gère le HTTPS avant nginx)
-- `SameSite` : Lax par défaut dans Flask — bloque les requêtes cross-site via `fetch` et XHR, mais pas les soumissions de formulaire HTML. C'est pour ça que le CSRF a fonctionné malgré Lax.
+- `HttpOnly` : actif → JavaScript ne peut pas lire le cookie
+- `Secure` : absent → le cookie voyage en HTTP aussi (normal, ngrok gère le HTTPS avant nginx)
+- `SameSite` : Lax par défaut dans Flask — bloque `fetch` et XHR cross-site, pas les soumissions de formulaire
 
-La valeur du cookie elle-même est encodée en base64 mais lisible. Ce n'est pas un problème : la payload est signée avec HMAC, elle ne peut pas être modifiée sans la `SECRET_KEY`. Même si quelqu'un lit le contenu, il ne peut pas le falsifier.
-
----
-
-### Rate limiting — ajouté après les tests
-
-Une fois la CSRF corrigée, la question suivante était évidente : rien n'empêchait un script d'essayer des milliers de mots de passe sur `/login`. Le formulaire est protégé par CSRF, mais un attaquant qui récupère d'abord le token depuis la page (ce qu'un script peut faire) peut quand même bombarder la route.
-
-**Correction — Flask-Limiter**
-
-Ajout de `Flask-Limiter==3.5.1`. Limite de 5 tentatives POST par minute par IP sur `/login`. Au-delà → 429 avec une page d'erreur lisible.
-
-La clé par IP utilise le header `X-Real-IP` que nginx transmet — sinon derrière un proxy on aurait toujours l'IP interne du conteneur nginx, pas l'IP réelle du visiteur.
-
-Stockage en mémoire : suffisant pour un seul worker Gunicorn. Si on passait à plusieurs workers ou plusieurs instances, il faudrait Redis comme backend.
-
-Test live : 7 POST rapides avec un token CSRF valide → tentatives 1 à 5 retournent 200 (mauvais mdp), tentatives 6 et 7 retournent 429.
+La valeur du cookie est encodée en base64 mais lisible. Ce n'est pas un problème : la payload est signée avec HMAC et ne peut pas être modifiée sans la `SECRET_KEY`.
 
 ---
 
-### Ce qui reste ouvert (connu, non bloquant pour la démo)
+### Rate limiting
+
+Après la correction CSRF, la question suivante : rien n'empêchait un script de récupérer un token depuis la page et de tenter des milliers de mots de passe sur `/login`.
+
+Flask-Limiter règle ça. Limite de 5 tentatives POST par minute par IP sur `/login`. Au-delà → 429.
+
+La clé par IP utilise le header `X-Real-IP` que nginx transmet. Sans ça, toutes les requêtes arriveraient avec l'IP interne du conteneur nginx — la limite s'appliquerait globalement au lieu de s'appliquer par visiteur.
+
+Stockage en mémoire : suffisant pour un seul worker Gunicorn. Plusieurs workers ou plusieurs instances demanderaient Redis.
+
+Test : 7 POST rapides avec un token CSRF valide → 1 à 5 retournent 200, 6 et 7 retournent 429.
+
+---
+
+### Ce qui reste ouvert
 
 - **HTTPS non forcé sur port 80** : modifié pour ngrok, un accès HTTP direct ne redirige plus vers HTTPS. En prod ce serait à corriger.
-- **Pas de validation d'email côté serveur** : on vérifie le format côté HTML (`type="email"`) mais un curl peut envoyer n'importe quoi.
+- **Validation d'email côté serveur** : le format est vérifié côté HTML (`type="email"`) mais un curl peut envoyer n'importe quoi.
+- **Open redirect sur `?next=`** : après login, on redirige vers `next_page` sans vérifier que c'est une URL locale. Un lien forgé `/login?next=https://evil.com` redirige vers l'extérieur après connexion. À corriger avec `urlparse(next_page).netloc == ''`.
 
 ---
 
-## Conclusion — où on en est et pourquoi on s'arrête là
+## Conclusion
 
 L'exercice demandait de déployer une app Flask avec Docker. C'est fait depuis la V1.
 
-Ce qui a été ajouté ensuite n'était pas du remplissage. Chaque décision venait d'un besoin réel :
+L'auth est venue parce qu'une app sans comptes utilisateurs n'a pas grand sens en démo — tout le monde voit tout. ngrok parce qu'une app qu'on ne peut montrer qu'en local c'est limité. Le CSRF parce qu'une fois en ligne on a testé, la faille était là, reproductible, on ne pouvait pas la laisser. Le rate limiting parce qu'après le CSRF la prochaine question était évidente et la réponse prenait vingt minutes.
 
-- **L'auth** est venue parce qu'une app sans utilisateurs c'est une app sans données. Et une app avec des données partagées entre tout le monde ça n'a pas de sens en démo.
-- **ngrok** est venu parce qu'une app qu'on ne peut montrer qu'en local c'est limité. L'objectif était de montrer quelque chose qui tourne vraiment.
-- **Le CSRF** est venu parce qu'une fois l'app en ligne, on a testé — et la faille était là, concrète, reproductible. On ne pouvait pas la laisser ouverte en sachant qu'elle existait.
-- **Le rate limiting** est venu parce qu'après avoir corrigé le CSRF, la question suivante était évidente : est-ce qu'on peut brute-forcer le login ? On a regardé, on pouvait. Donc on a corrigé.
-
-Ce qu'on ne fait pas : Redis pour le rate limiting en multi-workers, Flask-Migrate pour les migrations de schéma, validation d'email côté serveur, HTTPS forcé sur le port 80. Ces points existent, ils sont documentés, mais les ajouter ne changerait pas la démonstration — ce serait de l'optimisation sans objectif clair.
-
-Le projet dans son état actuel montre quelque chose de complet : une infrastructure Docker fonctionnelle, des utilisateurs, un accès distant, et une vraie séance de tests de sécurité avec corrections à la clé. C'est suffisant, et c'est honnête.
+Ce qu'on n'a pas fait : Redis pour le rate limiting multi-workers, Flask-Migrate pour les migrations, validation email côté serveur, HTTPS forcé sur le port 80. Ces points sont documentés. Les ajouter ne changerait pas ce que le projet démontre.

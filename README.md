@@ -26,7 +26,7 @@ Internet
  PostgreSQL        ← La base de données (une table users, une table todos)
 ```
 
-- **ngrok** : crée un tunnel HTTPS public vers l'app sans toucher au routeur ni aux DNS. Pratique pour une démo ou un accès à distance rapide.
+- **ngrok** : crée un tunnel HTTPS public vers l'app sans toucher au routeur ni aux DNS. L'URL générée est accessible depuis n'importe où.
 - **Nginx** : le "portier". Gère le HTTPS local (port 443 avec cert auto-signé) et sert directement en HTTP (port 80) pour que ngrok puisse tunneler sans erreur SSL.
 - **Gunicorn** : serveur WSGI, exécute Flask en production. Flask seul n'est pas fait pour ça.
 - **PostgreSQL** : stocke les utilisateurs et leurs tâches. Chaque utilisateur ne voit que ses propres données.
@@ -180,7 +180,7 @@ L'app gère des comptes utilisateurs. Chaque utilisateur a son propre espace de 
 - `/logout` — se déconnecter
 - Toutes les routes todo sont protégées par `@login_required` — un utilisateur non connecté est redirigé vers `/login`
 
-Les mots de passe sont hashés avec `werkzeug.security.generate_password_hash` (pbkdf2:sha256). Ils ne sont jamais stockés en clair.
+Les mots de passe sont hashés avec `werkzeug.security.generate_password_hash` (pbkdf2:sha256 + sel aléatoire). Rien n'est stocké en clair en base.
 
 ---
 
