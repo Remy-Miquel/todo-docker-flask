@@ -261,8 +261,23 @@ La valeur du cookie elle-même est encodée en base64 mais lisible. Ce n'est pas
 
 ---
 
+### Rate limiting — ajouté après les tests
+
+Une fois la CSRF corrigée, la question suivante était évidente : rien n'empêchait un script d'essayer des milliers de mots de passe sur `/login`. Le formulaire est protégé par CSRF, mais un attaquant qui récupère d'abord le token depuis la page (ce qu'un script peut faire) peut quand même bombarder la route.
+
+**Correction — Flask-Limiter**
+
+Ajout de `Flask-Limiter==3.5.1`. Limite de 5 tentatives POST par minute par IP sur `/login`. Au-delà → 429 avec une page d'erreur lisible.
+
+La clé par IP utilise le header `X-Real-IP` que nginx transmet — sinon derrière un proxy on aurait toujours l'IP interne du conteneur nginx, pas l'IP réelle du visiteur.
+
+Stockage en mémoire : suffisant pour un seul worker Gunicorn. Si on passait à plusieurs workers ou plusieurs instances, il faudrait Redis comme backend.
+
+Test live : 7 POST rapides avec un token CSRF valide → tentatives 1 à 5 retournent 200 (mauvais mdp), tentatives 6 et 7 retournent 429.
+
+---
+
 ### Ce qui reste ouvert (connu, non bloquant pour la démo)
 
-- **Rate limiting sur `/login`** : rien n'empêche un brute force automatisé. Flask-Limiter le gérerait.
 - **HTTPS non forcé sur port 80** : modifié pour ngrok, un accès HTTP direct ne redirige plus vers HTTPS. En prod ce serait à corriger.
-- **Pas de validation d'email** : on vérifie le format côté HTML (`type="email"`) mais pas côté serveur. Un curl peut envoyer n'importe quoi.
+- **Pas de validation d'email côté serveur** : on vérifie le format côté HTML (`type="email"`) mais un curl peut envoyer n'importe quoi.
