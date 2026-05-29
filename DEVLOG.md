@@ -149,8 +149,6 @@ Premier run : vert.
 
 ---
 
----
-
 ## V2 — Authentification et accès distant
 
 ### Contexte
@@ -204,8 +202,6 @@ docker compose logs ngrok   # chercher "url=https://..."
 # ou
 http://localhost:4040        # dashboard ngrok
 ```
-
----
 
 ---
 

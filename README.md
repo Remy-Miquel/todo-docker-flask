@@ -90,8 +90,8 @@ docker compose version
 ### Étape 1 — Récupérer le projet
 
 ```bash
-git clone <url-du-repo>
-cd Docker
+git clone https://github.com/Remy-Miquel/todo-docker-flask.git
+cd todo-docker-flask
 ```
 
 ---
