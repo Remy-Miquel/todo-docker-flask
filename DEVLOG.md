@@ -330,6 +330,14 @@ Les droits sont au niveau table, pas au niveau ligne. Un user mal filtré dans u
 
 ---
 
+## Headers de sécurité — port 80
+
+Les `add_header` (CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy) étaient uniquement dans le bloc port 443. Ngrok tunnele vers le port 80 — en conditions réelles les headers n'étaient jamais servis.
+
+Ajoutés dans le bloc port 80. HSTS intentionnellement absent : ce header n'a de sens que sur HTTPS, il est ignoré sur HTTP.
+
+---
+
 ## Patch — CVE-2026-42945 (Nginx)
 
 CVE-2026-42945, alias "Nginx Rift" : heap buffer overflow dans le module `ngx_http_rewrite_module`, déclenché par les directives `rewrite`, `if` ou `set` avec des expressions non nommées (`$1`, `$2`). Score CVSS 9.2, exploitation active signalée dès le 18 mai 2026. Versions affectées : 0.6.27 à 1.30.0.
