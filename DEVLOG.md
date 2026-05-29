@@ -147,6 +147,22 @@ Trois étapes :
 
 Les variables d'environnement dans le workflow sont des placeholders — le pipeline n'a pas besoin d'une vraie base de données pour valider la configuration et builder l'image.
 
+**Pourquoi on s'arrête au CI et pas au CD**
+
+Le CD (Continuous Deployment) c'est l'étape d'après : déployer automatiquement sur un serveur à chaque push qui passe le CI. C'est la suite logique, et dans un vrai projet c'est ce qu'on ferait.
+
+Ici on ne l'a pas implémenté, pour une raison simple : le CD a besoin d'une cible stable. Notre setup c'est une machine locale avec ngrok — ngrok redémarre avec une URL différente à chaque fois, ce n'est pas un serveur. GitHub Actions ne saurait pas où envoyer le déploiement.
+
+Ce que ça ressemblerait avec une vraie cible :
+
+- **Docker Hub ou GHCR** : le CI build l'image et la pousse sur un registry public. L'image est versionnée, disponible, prête à être tirée par n'importe quel serveur. C'est un CD partiel — le serveur doit encore être géré manuellement.
+
+- **Railway ou Render** : plateformes cloud avec intégration GitHub directe. On connecte le repo, on configure les variables d'environnement en ligne, et chaque push sur `main` déclenche un redéploiement automatique. URL stable, HTTPS gratuit, logs. C'est le CD complet pour un projet de cette taille.
+
+- **VPS avec SSH** : GitHub Actions se connecte au serveur via SSH, fait un `git pull` et un `docker compose up --build`. Plus de contrôle, plus de travail de configuration.
+
+On a fait le choix de ne pas aller jusque-là. Le projet avait déjà largement dépassé le périmètre initial. Documenter ce que serait le CD et pourquoi on ne l'implémente pas ici, c'est aussi une décision technique — pas un oubli.
+
 Premier run : vert.
 
 ---
