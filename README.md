@@ -2,35 +2,34 @@
 
 ![CI](https://github.com/Remy-Miquel/todo-docker-flask/actions/workflows/ci.yml/badge.svg)
 
-Ce projet montre comment déployer une application Flask en production à l'aide de Docker.
-L'objectif est de passer d'un simple `python run.py` à une vraie infrastructure sécurisée,
-accessible via HTTPS, et déployable n'importe où.
+Ce projet montre comment déployer une application Flask avec Docker — de zéro jusqu'à un vrai accès distant sécurisé.
+
+L'objectif n'est pas de montrer une app sophistiquée, c'est de montrer l'infrastructure autour : Docker Compose, Nginx en reverse proxy, HTTPS, gestion d'utilisateurs, base de données, et exposition publique via ngrok.
 
 ---
 
 ## 🏗️ Architecture
 
-Quand un utilisateur visite l'application, sa requête passe par trois services :
-
 ```
-Navigateur
+Internet
     │
-    ▼  HTTPS (port 443)
- Nginx          ← Reverse proxy : reçoit les requêtes, gère le HTTPS
+    ▼  HTTPS public (tunnel ngrok)
+ ngrok           ← Expose l'app sur une URL publique sans ouvrir de port
+    │
+    ▼  HTTP interne (port 80)
+ Nginx            ← Reverse proxy : reçoit les requêtes, gère le HTTPS local
     │
     ▼  HTTP interne (port 8000)
- Gunicorn/Flask ← L'application Python
+ Gunicorn/Flask   ← L'application Python
     │
     ▼
- PostgreSQL     ← La base de données
+ PostgreSQL        ← La base de données (une table users, une table todos)
 ```
 
-- **Nginx** : le "portier". Il reçoit les visiteurs, gère le HTTPS et redirige vers Flask.
-- **Gunicorn** : le serveur WSGI. Il exécute l'application Flask en production.
-- **PostgreSQL** : la base de données qui stocke les tâches.
-
-> 💡 Flask seul ne suffit pas en production : son serveur intégré est mono-thread
-> et n'est pas sécurisé. Gunicorn est conçu pour gérer de vraies requêtes en parallèle.
+- **ngrok** : crée un tunnel HTTPS public vers l'app sans toucher au routeur ni aux DNS. Pratique pour une démo ou un accès à distance rapide.
+- **Nginx** : le "portier". Gère le HTTPS local (port 443 avec cert auto-signé) et sert directement en HTTP (port 80) pour que ngrok puisse tunneler sans erreur SSL.
+- **Gunicorn** : serveur WSGI, exécute Flask en production. Flask seul n'est pas fait pour ça.
+- **PostgreSQL** : stocke les utilisateurs et leurs tâches. Chaque utilisateur ne voit que ses propres données.
 
 ---
 
@@ -40,43 +39,44 @@ Navigateur
 .
 ├── .github/
 │   └── workflows/
-│       └── ci.yml           # Pipeline CI — build et validation automatiques
+│       └── ci.yml              # CI — validation syntaxe, config et build à chaque push
 ├── app/
-│   ├── __init__.py          # Crée l'application Flask et connecte la BDD
-│   ├── models.py            # Définit la table "todos" en base de données
-│   ├── routes.py            # Les routes : CRUD, calendrier, health check
+│   ├── __init__.py             # Crée l'app Flask, connecte SQLAlchemy et Flask-Login
+│   ├── models.py               # Tables : User (avec mot de passe hashé) et Todo
+│   ├── routes.py               # CRUD todo, calendrier, health check (protégés par login)
+│   ├── auth.py                 # Routes d'authentification : /login /register /logout
 │   ├── static/
-│   │   ├── css/style.css    # Style de l'interface
-│   │   └── js/app.js        # Filtre et toggle calendrier
+│   │   ├── css/style.css       # Style de l'interface
+│   │   └── js/app.js           # Filtre et toggle calendrier
 │   └── templates/
-│       ├── base.html        # Squelette HTML commun
-│       ├── index.html       # Liste, filtres, calendrier mensuel
-│       ├── calendar.html    # Vue calendrier dédiée
-│       └── error.html       # Page d'erreur (404, 400...)
+│       ├── base.html           # Squelette HTML : header avec username et bouton logout
+│       ├── index.html          # Liste, filtres, calendrier mensuel
+│       ├── login.html          # Formulaire de connexion
+│       ├── register.html       # Formulaire de création de compte
+│       └── error.html          # Page d'erreur (404, 400...)
 ├── nginx/
-│   ├── nginx.conf           # Configuration du reverse proxy
+│   ├── nginx.conf              # Port 80 : HTTP direct (pour ngrok) / Port 443 : HTTPS local
 │   └── certs/
-│       ├── cert.pem         # Certificat SSL (généré)
-│       ├── key.pem          # Clé privée SSL (générée)
-│       └── generate-ssl.sh  # Script pour générer les certificats
-├── docker-compose.yml       # Orchestre les 3 services (Flask, Nginx, PostgreSQL)
-├── Dockerfile               # Recette pour construire l'image Flask
-├── .env.example             # Variables d'environnement requises (sans les vraies valeurs)
-├── .gitignore               # Exclut .env, clés SSL, caches Python
-├── requirements.txt         # Dépendances Python
-└── run.py                   # Point d'entrée de l'application
+│       ├── cert.pem            # Certificat SSL auto-signé
+│       ├── key.pem             # Clé privée SSL
+│       └── generate-ssl.sh     # Script openssl pour générer les deux fichiers ci-dessus
+├── docker-compose.yml          # Orchestre les 4 services : Flask, Nginx, PostgreSQL, ngrok
+├── Dockerfile                  # Recette pour construire l'image Flask
+├── .env.example                # Toutes les variables nécessaires (sans les vraies valeurs)
+├── .gitignore                  # .env, clés SSL, caches Python — jamais dans Git
+├── requirements.txt            # Dépendances Python
+└── run.py                      # Point d'entrée de l'application
 ```
 
 ---
 
 ## ✅ Prérequis
 
-Avant de commencer, assurez-vous d'avoir installé :
-
 - [Docker](https://docs.docker.com/get-docker/) (version 20+)
 - [Docker Compose](https://docs.docker.com/compose/install/) (inclus avec Docker Desktop)
+- Un compte ngrok gratuit pour l'accès distant → [ngrok.com](https://ngrok.com)
 
-Vérifiez vos installations :
+Vérifiez les installations :
 
 ```bash
 docker --version
@@ -85,7 +85,7 @@ docker compose version
 
 ---
 
-## 🚀 Déploiement étape par étape
+## 🚀 Déploiement
 
 ### Étape 1 — Récupérer le projet
 
@@ -96,65 +96,9 @@ cd Docker
 
 ---
 
-### Étape 2 — Le Dockerfile
+### Étape 2 — Générer les certificats HTTPS
 
-Le `Dockerfile` est la **recette** pour construire l'image de l'application Flask.
-Il indique à Docker comment préparer l'environnement Python.
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Installer les dépendances système nécessaires à psycopg2
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libpq-dev \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copier et installer les dépendances Python en premier
-# (optimisation du cache Docker)
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copier le code de l'application
-COPY app/ ./app/
-COPY run.py .
-
-EXPOSE 8000
-
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "run:app"]
-```
-
-> 💡 On installe d'abord les dépendances (`requirements.txt`) **avant** de copier le code.
-> Ainsi, si on modifie uniquement le code, Docker réutilise la couche des dépendances
-> depuis son cache → build beaucoup plus rapide.
-
-> 💡 `gcc` et `libpq-dev` sont nécessaires pour compiler `psycopg2`,
-> la librairie Python qui parle à PostgreSQL.
-
----
-
-### Étape 3 — Générer les certificats HTTPS
-
-Pour activer HTTPS en local, on génère un certificat **auto-signé** avec `openssl`.
-Ce type de certificat est parfait pour le développement — en production, on utiliserait
-Let's Encrypt.
-
-Créez le fichier `nginx/certs/generate-ssl.sh` :
-
-```bash
-#!/bin/bash
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout key.pem \
-    -out cert.pem \
-    -subj "/C=FR/ST=Paris/L=Paris/O=TodoApp/CN=localhost"
-
-echo "✅ Certificats générés : cert.pem et key.pem"
-```
-
-Puis générez les certificats :
+Pour le HTTPS local (port 443), on génère un certificat auto-signé. Le navigateur affiche un avertissement, c'est normal — en production on utiliserait Let's Encrypt.
 
 ```bash
 cd nginx/certs
@@ -162,207 +106,113 @@ bash generate-ssl.sh
 cd ../..
 ```
 
-Deux fichiers sont créés :
-- `cert.pem` → le certificat (public)
-- `key.pem` → la clé privée (**ne jamais partager ce fichier**)
-
 ---
 
-### Étape 4 — Configuration Nginx
-
-Créez le fichier `nginx/nginx.conf` :
-
-```nginx
-events {
-    worker_connections 1024;
-}
-
-http {
-    include       /etc/nginx/mime.types;
-    default_type  application/octet-stream;
-
-    # Rediriger tout le trafic HTTP vers HTTPS
-    server {
-        listen 80;
-        server_name localhost;
-        return 301 https://$host$request_uri;
-    }
-
-    # Serveur HTTPS
-    server {
-        listen 443 ssl;
-        server_name localhost;
-
-        # Certificats SSL
-        ssl_certificate     /etc/nginx/certs/cert.pem;
-        ssl_certificate_key /etc/nginx/certs/key.pem;
-
-        # Headers de sécurité
-        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        add_header X-Content-Type-Options "nosniff" always;
-        add_header X-Frame-Options "DENY" always;
-        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-        # Transmettre les requêtes à Flask/Gunicorn
-        location / {
-            proxy_pass http://flask_app:8000;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-    }
-}
-```
-
-**Explication des headers de sécurité :**
-
-| Header | Rôle |
-|--------|------|
-| `Strict-Transport-Security` | Force le navigateur à toujours utiliser HTTPS |
-| `X-Content-Type-Options` | Empêche le navigateur de deviner le type de fichier |
-| `X-Frame-Options` | Bloque l'intégration du site dans un `<iframe>` (anti-clickjacking) |
-| `Referrer-Policy` | Limite les infos partagées quand l'utilisateur clique un lien externe |
-
----
-
-### Étape 5 — Docker Compose
-
-Le fichier `docker-compose.yml` permet de **lancer les 3 services ensemble**
-avec une seule commande.
-
-```yaml
-services:
-
-  # Base de données PostgreSQL
-  db:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - app_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  # Application Flask (via Gunicorn)
-  flask_app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      FLASK_APP: run.py
-      FLASK_ENV: production
-      FLASK_DEBUG: "0"
-      SECRET_KEY: ${SECRET_KEY}
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - app_network
-    restart: unless-stopped
-
-  # Reverse proxy Nginx
-  nginx:
-    image: nginx:1.25-alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
-    depends_on:
-      - flask_app
-    networks:
-      - app_network
-    restart: unless-stopped
-
-networks:
-  app_network:
-    driver: bridge
-
-volumes:
-  postgres_data:
-```
-
-> 💡 `depends_on` garantit l'ordre de démarrage :
-> PostgreSQL démarre avant Flask, Flask démarre avant Nginx.
-
-> 💡 Le volume `postgres_data` permet aux données de **persister** même si
-> le conteneur est supprimé.
-
-> 💡 `:ro` (read-only) sur les volumes Nginx empêche le conteneur de modifier
-> nos fichiers de configuration — bonne pratique de sécurité.
-
----
-
-### Étape 6 — Lancer l'application
+### Étape 3 — Configurer les variables d'environnement
 
 ```bash
-docker compose up --build
+cp .env.example .env
 ```
 
-- `--build` reconstruit l'image Flask à chaque lancement (utile lors des modifications)
-- Retirez `--build` pour les lancements suivants si le code n'a pas changé
+Modifiez `.env` avec vos propres valeurs :
 
-Pour lancer en arrière-plan :
+```env
+POSTGRES_DB=nom_de_la_base
+POSTGRES_USER=nom_utilisateur
+POSTGRES_PASSWORD=mot_de_passe_solide
+SECRET_KEY=cle_secrete_longue_et_aleatoire
+NGROK_AUTHTOKEN=votre_token_ngrok
+```
+
+> Le `NGROK_AUTHTOKEN` se récupère sur [dashboard.ngrok.com/get-started/your-authtoken](https://dashboard.ngrok.com/get-started/your-authtoken) après création d'un compte gratuit.
+
+---
+
+### Étape 4 — Lancer les 4 services
+
+Si c'est la première fois (ou après un changement de schéma BDD) :
 
 ```bash
-docker compose up --build -d
+docker compose down -v           # supprime l'ancienne base si elle existe
+docker compose up --build -d     # build + démarrage en arrière-plan
+```
+
+Lancements suivants (si le code n'a pas changé) :
+
+```bash
+docker compose up -d
 ```
 
 ---
 
-## 🌐 Accéder à l'application
+### Étape 5 — Trouver l'URL ngrok
 
-Une fois les conteneurs démarrés, ouvrez votre navigateur :
+Au démarrage, ngrok génère une URL publique HTTPS. Deux façons de la récupérer :
+
+```bash
+# Dans les logs (chercher "url=https://...")
+docker compose logs ngrok
+
+# Ou ouvrir le dashboard ngrok dans le navigateur
+http://localhost:4040
+```
+
+L'URL ressemble à `https://xxxx-xx-xx-xx.ngrok-free.app`.
+Partagez-la — n'importe qui peut accéder à votre app depuis Internet.
+
+---
+
+## 🌐 Accès local direct
 
 ```
-https://localhost
+https://localhost        ← HTTPS avec cert auto-signé (cliquer "Avancé" si avertissement)
+http://localhost         ← HTTP direct (utilisé par ngrok en interne)
 ```
 
-> ⚠️ Le navigateur affichera un avertissement "certificat non approuvé"
-> car notre certificat est auto-signé. C'est **normal en développement**.
-> Cliquez sur "Avancé" puis "Continuer vers localhost".
+---
+
+## 🔒 Gestion des utilisateurs
+
+L'app gère des comptes utilisateurs. Chaque utilisateur a son propre espace de tâches — il ne voit pas celles des autres.
+
+- `/register` — créer un compte (username, email, mot de passe)
+- `/login` — se connecter
+- `/logout` — se déconnecter
+- Toutes les routes todo sont protégées par `@login_required` — un utilisateur non connecté est redirigé vers `/login`
+
+Les mots de passe sont hashés avec `werkzeug.security.generate_password_hash` (pbkdf2:sha256). Ils ne sont jamais stockés en clair.
 
 ---
 
 ## 🛠️ Commandes utiles
 
 ```bash
-# Voir les conteneurs qui tournent
+# Voir les 4 services
 docker compose ps
 
-# Voir les logs en temps réel
+# Logs en temps réel
 docker compose logs -f
 
-# Voir les logs d'un seul service
+# Logs d'un seul service
 docker compose logs -f flask_app
+docker compose logs ngrok
 
-# Entrer dans un conteneur (pour déboguer)
+# Entrer dans un conteneur
 docker compose exec flask_app bash
 
-# Reconstruire uniquement l'image Flask
-docker compose build flask_app
+# Inspecter la base de données
+docker compose exec db psql -U $POSTGRES_USER -d $POSTGRES_DB
 ```
 
 ---
 
-## 🛑 Arrêter l'application
+## 🛑 Arrêter
 
 ```bash
 # Arrêter sans supprimer les données
 docker compose down
 
-# Arrêter ET supprimer les données (BDD incluse)
+# Arrêter ET repartir d'une base vierge
 docker compose down -v
 ```
 
@@ -372,17 +222,20 @@ docker compose down -v
 
 | Vérification | Commande |
 |---|---|
-| Les 3 services tournent | `docker compose ps` |
-| L'app répond | `curl -k https://localhost` |
-| La BDD est accessible | `docker compose exec db psql -U $POSTGRES_USER -d $POSTGRES_DB -c "\dt"` |
+| Les 4 services tournent | `docker compose ps` |
+| L'app répond en HTTP | `curl http://localhost/health` |
+| L'app répond en HTTPS | `curl -k https://localhost/health` |
+| L'URL ngrok est active | `docker compose logs ngrok` |
+| Tables en base | `docker compose exec db psql -U $POSTGRES_USER -d $POSTGRES_DB -c "\dt"` |
 
 ---
 
 ## 📚 Ce que ce projet illustre
 
 - **Containerisation** : packager une app Python dans une image Docker portable
-- **Orchestration** : gérer plusieurs services avec Docker Compose
-- **Reverse proxy** : utiliser Nginx devant Gunicorn pour la performance et la sécurité
-- **HTTPS** : chiffrer les communications avec un certificat SSL
-- **Sécurité** : appliquer des headers HTTP pour protéger l'application
-- **Persistance** : conserver les données PostgreSQL via les volumes Docker
+- **Orchestration** : gérer 4 services qui dépendent les uns des autres avec Docker Compose
+- **Reverse proxy** : Nginx devant Gunicorn — séparation des responsabilités
+- **HTTPS local** : certificat auto-signé pour le développement
+- **Accès distant** : ngrok comme alternative simple à un déploiement cloud
+- **Authentification** : sessions Flask-Login, mots de passe hashés, isolation des données par utilisateur
+- **Sécurité** : headers HTTP, routes protégées, requêtes préparées (SQLAlchemy), échappement Jinja2

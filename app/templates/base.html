@@ -11,8 +11,24 @@
 <header>
   <div class="header-inner">
     <a href="/" class="logo">✦ Todo</a>
+    {% if current_user.is_authenticated %}
+    <div class="header-user">
+      <span class="header-username">{{ current_user.username }}</span>
+      <a href="{{ url_for('auth.logout') }}" class="btn-logout">Déconnexion</a>
+    </div>
+    {% endif %}
   </div>
 </header>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="flash-zone">
+  {% for category, message in messages %}
+  <div class="flash flash-{{ category }}">{{ message }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endwith %}
 
 <main>
   {% block content %}{% endblock %}

@@ -6,6 +6,7 @@
 
   {# ── Formulaire ── #}
   <form class="todo-form" action="/todos" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row">
       <input type="text" name="title" placeholder="Nouvelle tâche..." required maxlength="200" autofocus>
       <button type="submit">Ajouter</button>
@@ -43,6 +44,7 @@
         data-status="{{ 'done' if todo.completed else 'pending' }}">
 
       <form action="/todos/{{ todo.id }}/toggle" method="POST" class="f-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn-check" title="Changer le statut">
           <span class="check{% if todo.completed %} checked{% endif %}">{% if todo.completed %}✓{% endif %}</span>
         </button>
@@ -61,6 +63,7 @@
       </div>
 
       <form action="/todos/{{ todo.id }}/delete" method="POST" class="f-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn-del" title="Supprimer">✕</button>
       </form>
 
@@ -75,6 +78,7 @@
   {% if n_done > 0 %}
   <div class="clear-zone">
     <form action="/todos/clear-done" method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn-clear">Effacer les {{ n_done }} terminée{{ 's' if n_done > 1 else '' }}</button>
     </form>
   </div>
@@ -126,6 +130,7 @@
     <div class="cal-add">
       <p class="cal-add-label">Épingler une tâche</p>
       <form class="todo-form" action="/todos" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-row">
           <input type="text" name="title" placeholder="Titre..." required maxlength="200">
           <button type="submit">Ajouter</button>

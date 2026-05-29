@@ -1,6 +1,7 @@
 import calendar
 from datetime import date
 from flask import Blueprint, render_template, request, redirect, url_for, abort
+from flask_login import login_required, current_user
 from app import db
 from app.models import Todo
 
@@ -11,6 +12,7 @@ MOIS = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
 
 
 @main.route('/')
+@login_required
 def index():
     today = date.today()
     year  = request.args.get('year',  today.year,  type=int)
@@ -21,7 +23,7 @@ def index():
     elif month > 12:
         month, year = 1, year + 1
 
-    todos = Todo.query.order_by(Todo.created_at.desc()).all()
+    todos = Todo.query.filter_by(user_id=current_user.id).order_by(Todo.created_at.desc()).all()
 
     debut = date(year, month, 1)
     fin   = date(year, month, calendar.monthrange(year, month)[1])
@@ -48,6 +50,7 @@ def index():
 
 
 @main.route('/todos', methods=['POST'])
+@login_required
 def create_todo():
     title = request.form.get('title', '').strip()
     if not title or len(title) > 200:
@@ -61,30 +64,33 @@ def create_todo():
         except ValueError:
             pass
 
-    db.session.add(Todo(title=title, due_date=due_date))
+    db.session.add(Todo(title=title, due_date=due_date, user_id=current_user.id))
     db.session.commit()
     return redirect(url_for('main.index'))
 
 
 @main.route('/todos/<int:todo_id>/toggle', methods=['POST'])
+@login_required
 def toggle_todo(todo_id):
-    todo = Todo.query.get_or_404(todo_id)
+    todo = Todo.query.filter_by(id=todo_id, user_id=current_user.id).first_or_404()
     todo.completed = not todo.completed
     db.session.commit()
     return redirect(url_for('main.index'))
 
 
 @main.route('/todos/<int:todo_id>/delete', methods=['POST'])
+@login_required
 def delete_todo(todo_id):
-    todo = Todo.query.get_or_404(todo_id)
+    todo = Todo.query.filter_by(id=todo_id, user_id=current_user.id).first_or_404()
     db.session.delete(todo)
     db.session.commit()
     return redirect(url_for('main.index'))
 
 
 @main.route('/todos/clear-done', methods=['POST'])
+@login_required
 def clear_done():
-    Todo.query.filter_by(completed=True).delete()
+    Todo.query.filter_by(user_id=current_user.id, completed=True).delete()
     db.session.commit()
     return redirect(url_for('main.index'))
 

@@ -15,7 +15,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-      
+
   flask_app:
     build:
       context: .
@@ -43,6 +43,19 @@ services:
       - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - flask_app
+    networks:
+      - app_network
+    restart: unless-stopped
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    command: http nginx:80 --log=stdout
+    ports:
+      - "4040:4040"
+    depends_on:
+      - nginx
     networks:
       - app_network
     restart: unless-stopped
